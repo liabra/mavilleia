@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Données persistantes (sauvegarde locale)
+data/
+
+# Archives
+app_v1_archive.py
+
+# IDE
+.vscode/
+.idea/

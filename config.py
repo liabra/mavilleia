@@ -11,9 +11,9 @@ JOURNAL_INTIME_MAX = 20
 HISTORIQUE_VILLE_MAX = 300
 CONVERSATIONS_MAX = 120
 
-# Modèles Claude
-MODEL_RAPIDE = "claude-haiku-4-5-20251001"    # Pensées rapides, rêves
-MODEL_PROFOND = "claude-sonnet-4-6"            # Conversations, fondation
+# Modèles Gemini
+MODEL_RAPIDE = "gemini-1.5-flash"   # Pensées rapides, rêves
+MODEL_PROFOND = "gemini-1.5-flash"  # Conversations, fondation (flash suffit)
 
 # ────────────────────────────────────────
 #  TEMPS

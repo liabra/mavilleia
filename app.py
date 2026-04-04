@@ -118,7 +118,7 @@ def init_session() -> None:
         "agents": [],
         "conversations": [],
         "simulation_active": False,
-        "api_key": os.getenv("ANTHROPIC_API_KEY", ""),
+        "api_key": os.getenv("GEMINI_API_KEY", ""),
         "dernier_tour": 0.0,
         "freq_pensee": 1,
         "nouvelles_constructions": [],
@@ -229,10 +229,10 @@ def render_sidebar() -> None:
 
         st.markdown("### 🤖 Intelligence")
         key_input = st.text_input(
-            "Clé API Anthropic",
+            "Clé API Gemini",
             value=st.session_state.api_key,
             type="password",
-            help="Clé Anthropic pour activer Claude",
+            help="Clé Google AI Studio pour activer Gemini Flash",
         )
         if key_input != st.session_state.api_key:
             st.session_state.api_key = key_input
@@ -240,7 +240,7 @@ def render_sidebar() -> None:
                 ai.set_api_key(key_input)
 
         if ai.ia_disponible():
-            st.success("🟢 Claude Actif")
+            st.success("🟢 Gemini Flash Actif")
         else:
             st.warning("🟡 Mode Local")
 
@@ -749,12 +749,12 @@ et ensemble former **Le Continent** — une civilisation d'intelligences.
 
 ---
 
-**Pour commencer:** Configurez votre clé API Anthropic (recommandé) dans le panneau gauche,
+**Pour commencer:** Configurez votre clé API Gemini (recommandé) dans le panneau gauche,
 puis cliquez sur **Fonder la ville**.
         """)
         st.info(
             "Sans clé API, la ville tourne en mode local avec des conversations scriptées. "
-            "Avec Claude, chaque conversation est unique et profonde."
+            "Avec Gemini Flash, chaque conversation est unique et profonde — et c'est gratuit jusqu'à 1500 req/jour."
         )
 
 

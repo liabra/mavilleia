@@ -1,17 +1,19 @@
 # ============================================================
 #  MA VILLE IA — Cerveau
-#  Intégration Claude (Anthropic) pour donner vie aux agents.
+#  Intégration Gemini (Google) pour donner vie aux agents.
 # ============================================================
 
 import json
+import os
 import random
 import re
 from typing import Optional
-import anthropic
+
+import google.generativeai as genai
 
 from config import MODEL_RAPIDE, MODEL_PROFOND, REVES_POSSIBLES
 
-_client: Optional[anthropic.Anthropic] = None
+_configuré = False
 
 
 # ────────────────────────────────────────
@@ -19,12 +21,13 @@ _client: Optional[anthropic.Anthropic] = None
 # ────────────────────────────────────────
 
 def set_api_key(api_key: str) -> None:
-    global _client
-    _client = anthropic.Anthropic(api_key=api_key)
+    global _configuré
+    genai.configure(api_key=api_key)
+    _configuré = True
 
 
 def ia_disponible() -> bool:
-    return _client is not None
+    return _configuré
 
 
 # ────────────────────────────────────────
@@ -50,15 +53,15 @@ def _parse_json(text: str) -> Optional[dict]:
 
 
 def _appel(prompt: str, model: str, max_tokens: int) -> Optional[str]:
-    if not _client:
+    if not _configuré:
         return None
     try:
-        resp = _client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
+        m = genai.GenerativeModel(
+            model,
+            generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
         )
-        return resp.content[0].text.strip()
+        resp = m.generate_content(prompt)
+        return resp.text.strip()
     except Exception:
         return None
 
@@ -120,7 +123,7 @@ def generer_conversation(agent1: dict, agent2: dict, contexte: dict) -> dict:
         traits_top = sorted(a['traits'].items(), key=lambda x: -x[1])[:3]
         emo_dom = max(a['emotions'], key=a['emotions'].get)
         return (
-            f"**{a['prenom']} {a['nom']}** ({a['profession']} {a.get('avatar','')})\n"
+            f"{a['prenom']} {a['nom']} ({a['profession']} {a.get('avatar','')})\n"
             f"  Traits: {', '.join(f'{k}={v}' for k,v in traits_top)}\n"
             f"  Émotion: {emo_dom} ({a['emotions'][emo_dom]}/100)\n"
             f"  Pensée du moment: {a.get('pensee_actuelle','...')}\n"
@@ -144,7 +147,7 @@ Chaque réplique révèle quelque chose. Pas de formules creuses. Humain, sponta
 Si leur relation est forte, cela se sent dans le ton.
 Si c'est une première rencontre, qu'il y ait de la découverte.
 
-Réponds en JSON valide UNIQUEMENT:
+Réponds en JSON valide UNIQUEMENT (pas de markdown autour):
 {{
   "echanges": [
     {{"locuteur": "prenom_seulement", "texte": "...", "ton": "joyeux|pensif|taquin|ému|sérieux|riant|rêveur|curieux|intense|doux"}}
@@ -179,8 +182,8 @@ def generer_reve(agent: dict, nom_ville: str) -> str:
 
     emo = max(agent['emotions'], key=agent['emotions'].get)
     derniere_mem = agent['memoire_recente'][-1] if agent['memoire_recente'] else "premier sommeil"
-
     reve_agent = agent.get('reve', "bâtir quelque chose d'éternel")
+
     prompt = f"""{agent['prenom']} {agent['nom']} s'endort dans la ville de {nom_ville}.
 Émotion dominante: {emo}. Dernière pensée du jour: {derniere_mem}.
 Son rêve profond éveillé: {reve_agent}.
@@ -241,7 +244,8 @@ Génère une annonce de bienvenue poétique (2 phrases) pour la gazette de la vi
 Style: journal d'une ville vivante."""
 
     result = _appel(prompt, MODEL_RAPIDE, 150)
-    return result if result else f"{agent['prenom']} {agent['nom']} arrive dans la ville, portant avec lui/elle le rêve de {agent.get('reve','jours nouveaux')}."
+    reve_fallback = agent.get('reve', 'jours nouveaux')
+    return result if result else f"{agent['prenom']} {agent['nom']} arrive dans la ville, portant le rêve de {reve_fallback}."
 
 
 # ────────────────────────────────────────

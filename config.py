@@ -4,7 +4,7 @@
 # ============================================================
 
 VILLE_TAILLE_INITIALE = 14
-TOUR_DELAY_SECONDES = 6
+TOUR_DELAY_SECONDES = 3
 MEMOIRE_RECENTE_MAX = 12
 MEMOIRE_PROFONDE_MAX = 30
 JOURNAL_INTIME_MAX = 20

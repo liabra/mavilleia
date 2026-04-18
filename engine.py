@@ -135,6 +135,7 @@ def initialiser_ville(nom: str = "Luminia", taille: int = VILLE_TAILLE_INITIALE)
         "evenements_actifs": [],
         "histoire": [f"Jour 1 — {nom} voit le jour."],
         "declaration": "",
+        "flux_vivant": [],   # Stream temps réel (max 40 entrées)
         "statistiques": {
             "conversations_totales": 0,
             "batiments_construits": 4,
@@ -410,6 +411,12 @@ def tour_simulation(
 
     nouvelles_conversations: list[dict] = []
     appels_ce_tour = 0
+    flux = ville.setdefault("flux_vivant", [])
+
+    def _flux(texte: str, type_: str = "info") -> None:
+        flux.append({"texte": texte, "tour": ville["tour_actuel"], "heure": heure, "type": type_})
+        if len(flux) > 40:
+            ville["flux_vivant"] = flux[-40:]
 
     # ── 2. AUBE — chaque agent planifie sa journée ──
     if heure == 6:
@@ -430,8 +437,12 @@ def tour_simulation(
             humeur = plan.get("humeur_du_jour", "curiosité")
             if humeur in agents[i]["emotions"]:
                 agents[i]["emotions"][humeur] = min(100, agents[i]["emotions"][humeur] + 30)
+            pensee = plan.get("pensee_reveil", "")
+            if pensee:
+                _flux(f"{agents[i]['avatar']} **{agents[i]['prenom']}** — 💭 *{pensee}*", "pensee")
         if appels_ce_tour > 0:
             ville["histoire"].append(f"Jour {ville['jour']}, {heure_nom} — 🌅 La ville se réveille.")
+            _flux(f"🌅 **Aube du Jour {ville['jour']}** — La ville s'éveille.", "evenement")
 
     # ── 3. ÉVÉNEMENT MONDE ───────────────
     evenement = tirer_evenement()
@@ -442,6 +453,7 @@ def tour_simulation(
         ville["histoire"].append(f"Jour {ville['jour']}, {heure_nom} — {evenement['texte']}")
         if len(ville["histoire"]) > 300:
             ville["histoire"] = ville["histoire"][-300:]
+        _flux(f"{evenement['texte']}", "evenement")
 
         # Seuls les agents éveillés et disponibles réagissent
         for i, agent in enumerate(agents):
@@ -463,6 +475,9 @@ def tour_simulation(
                     if reaction.get("nouvelle_intention"):
                         agents[i]["intention"] = reaction["nouvelle_intention"]
                 agents[i]["cooldown_reaction"] = random.randint(3, 7)
+                pensee_r = reaction.get("pensee", "")
+                if pensee_r:
+                    _flux(f"{agents[i]['avatar']} **{agents[i]['prenom']}** — 💭 *{pensee_r[:90]}*", "pensee")
 
     # ── 4. RÊVES (3h du matin) ───────────
     if heure == 3:
@@ -476,15 +491,19 @@ def tour_simulation(
 
     # ── 5. NUIT — réflexion du soir (22h) ─
     if heure == 22:
+        _flux("🌙 **La nuit tombe.** Les habitants font leur bilan...", "evenement")
         for i, agent in enumerate(agents):
             if agent["etat"] != "dormant":
                 reflexion = ai.synthetiser_nuit(agents[i], ville["nom"])
                 appels_ce_tour += 1
                 agents[i] = _memoriser(agents[i], reflexion)
                 agents[i]["pensee_actuelle"] = reflexion[:80] + "..."
+                _flux(f"{agents[i]['avatar']} **{agents[i]['prenom']}** — 🌙 *{reflexion[:100]}*", "reflexion")
 
     # ── 6. DÉPLACEMENTS & INTERACTIONS ───
     paires_traitees: set[tuple] = set()
+    # On ne montre des pensées de déplacement que pour ~2 agents/tour
+    agents_pensee_depl = random.sample(range(len(agents)), min(2, len(agents)))
 
     for i, agent in enumerate(agents):
         # Décrement cooldown
@@ -493,6 +512,17 @@ def tour_simulation(
         # Déplacer
         agents[i] = deplacer_agent(agents[i], ville)
         agents[i]["tours_sans_interaction"] = agents[i].get("tours_sans_interaction", 0) + 1
+
+        # Pensée de déplacement (sans API, juste pour alimenter le flux)
+        if i in agents_pensee_depl and agents[i]["etat"] != "dormant":
+            pensee = agents[i].get("pensee_actuelle", "")
+            if pensee and heure not in (6, 22):
+                _flux(
+                    f"{agents[i]['avatar']} **{agents[i]['prenom']}** — "
+                    f"*{agents[i].get('activite_actuelle','en promenade')}* · "
+                    f"💭 {pensee[:70]}",
+                    "pensee",
+                )
 
         # Chercher rencontres
         proches = agents_proches(agents[i], agents)
@@ -561,6 +591,17 @@ def tour_simulation(
                 ville["statistiques"]["conversations_totales"] += 1
                 nouvelles_conversations.append(conv)
 
+                # Flux vivant — résumé de la rencontre
+                resume_c = conv.get("resume", "")
+                impact   = conv.get("impact_relation", 0)
+                impact_e = "💗" if impact >= 15 else "💬" if impact > 0 else "⚡"
+                _flux(
+                    f"{agents[i]['avatar']} **{agents[i]['prenom']}** & "
+                    f"{agents[j]['avatar']} **{agents[j]['prenom']}** {impact_e} {lieu} — "
+                    f"*{resume_c[:80]}*",
+                    "conversation",
+                )
+
                 # Idée → chantier
                 idee = conv.get("nouvelle_idee")
                 if idee and random.random() < 0.45:
@@ -580,6 +621,10 @@ def tour_simulation(
         ville["histoire"].append(
             f"Jour {ville['jour']}, {heure_nom} — {bat['emoji']} {bat['nom']} achevé! "
             f"(par {bat['fondateur']})"
+        )
+        _flux(
+            f"{bat['emoji']} **{bat['nom']}** inauguré! *(par {bat['fondateur']})*",
+            "construction",
         )
 
     # ── 8. MÉTRIQUES ─────────────────────

@@ -105,6 +105,17 @@ st.markdown("""
     margin: 0.2rem 0;
     display: inline-block;
 }
+.flux-item {
+    border-radius: 6px;
+    padding: 0.35rem 0.8rem;
+    margin: 0.2rem 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    transition: opacity 0.3s;
+}
+.flux-item:first-child {
+    border-left: 2px solid #a8edea;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -327,7 +338,7 @@ def render_sidebar() -> None:
                 st.rerun()
 
         st.divider()
-        st.caption("Ma Ville IA v2.0 · Propulsé par Claude")
+        st.caption("Ma Ville IA v2.0 · Propulsé par Gemini Flash")
 
 
 # ────────────────────────────────────────
@@ -371,6 +382,25 @@ def onglet_ville() -> None:
     for evt in ville.get("evenements_actifs", []):
         st.markdown(f'<div class="event-banner">{evt["texte"]}</div>', unsafe_allow_html=True)
 
+    # ── Mini-portraits actifs ──
+    actifs_now = [a for a in agents if a["etat"] != "dormant"]
+    if actifs_now:
+        cols_agents = st.columns(min(len(actifs_now), 8))
+        for idx, a in enumerate(actifs_now[:8]):
+            with cols_agents[idx]:
+                pensee_court = a.get("pensee_actuelle", "...")[:55]
+                etat_e = {"en_promenade": "🚶", "dans_batiment": "🏠", "socialisant": "💬", "en_crise": "😰"}.get(a["etat"], "🔄")
+                st.markdown(
+                    f'<div style="background:#0f1a2e;border:1px solid #1f3a5f;border-radius:8px;'
+                    f'padding:0.4rem 0.6rem;text-align:center;font-size:0.8rem;">'
+                    f'<div style="font-size:1.4rem">{a["avatar"]}</div>'
+                    f'<div style="font-weight:600;color:#a8edea">{a["prenom"]}</div>'
+                    f'<div style="color:#888;font-size:0.7rem">{etat_e} {a.get("activite_actuelle","")[:20]}</div>'
+                    f'<div style="color:#ccc;font-style:italic;font-size:0.7rem;margin-top:0.2rem">💭 {pensee_court}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
     st.markdown("---")
     col_map, col_info = st.columns([3, 2])
 
@@ -413,6 +443,31 @@ def onglet_ville() -> None:
                     f'<span class="new-bat-badge">{bat["emoji"]} {bat["nom"]}</span>',
                     unsafe_allow_html=True,
                 )
+
+    # ── Flux Vivant ──────────────────────────────────
+    flux = ville.get("flux_vivant", [])
+    if flux:
+        st.markdown("---")
+        st.markdown("### ⚡ Flux Vivant")
+        flux_colors = {
+            "pensee":       ("#1e3a5f", "💭"),
+            "reflexion":    ("#1a2a1a", "🌙"),
+            "conversation": ("#2a1a3a", "💬"),
+            "evenement":    ("#3a2a10", "🌍"),
+            "construction": ("#0a3a2a", "🏗️"),
+            "info":         ("#1a1a2e", "•"),
+        }
+        for item in reversed(flux[-20:]):
+            bg, _ = flux_colors.get(item.get("type", "info"), ("#1a1a2e", "•"))
+            h = item.get("heure", 0)
+            h_str = f"{h:02d}h"
+            st.markdown(
+                f'<div style="background:{bg};border-radius:6px;padding:0.35rem 0.8rem;'
+                f'margin:0.2rem 0;font-size:0.9rem;">'
+                f'<span style="color:#666;font-size:0.75rem">{h_str}</span> '
+                f'{item["texte"]}</div>',
+                unsafe_allow_html=True,
+            )
 
 
 # ────────────────────────────────────────
@@ -734,7 +789,7 @@ def page_bienvenue() -> None:
 Chaque habitant possède une **personnalité unique**, des **émotions**, des **rêves**, des **peurs**,
 et une mémoire qui s'enrichit au fil du temps.
 
-Ils se **rencontrent**, ont de **vraies conversations** générées par Claude, forment des **amitiés**,
+Ils se **rencontrent**, ont de **vraies conversations** générées par Gemini Flash, forment des **amitiés**,
 des **rivalités**, parfois de l'**amour**. Ensemble, ils **construisent** la ville.
 
 ---

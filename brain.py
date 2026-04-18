@@ -1,10 +1,10 @@
 # ============================================================
 #  MA VILLE IA — Cerveau
-#  Intégration Gemini (Google) pour donner vie aux agents.
+#  Architecture Smallville : agents qui décident eux-mêmes.
+#  Gemini Flash — économique, ~54 appels/jour pour 8 agents.
 # ============================================================
 
 import json
-import os
 import random
 import re
 from typing import Optional
@@ -67,45 +67,136 @@ def _appel(prompt: str, model: str, max_tokens: int) -> Optional[str]:
 
 
 # ────────────────────────────────────────
-#  Pensée rapide
+#  1. PLANIFICATION DU MATIN
+#  Appelé une fois par agent au réveil.
+#  L'agent décide de sa journée lui-même.
 # ────────────────────────────────────────
 
-def generer_pensee(agent: dict, contexte: dict) -> str:
+def planifier_journee(agent: dict, contexte: dict) -> dict:
+    """L'agent se réveille et décide de sa journée. ~1 appel/agent/jour."""
     if not ia_disponible():
-        return _pensee_locale(agent)
+        return _plan_local(agent)
 
-    heure_nom = contexte.get("heure_nom", "la journée")
-    evenement = contexte.get("evenement_actif", "")
-    derniere_mem = agent["memoire_recente"][-1] if agent["memoire_recente"] else "Premier jour."
-    relation_recente = ""
-    if agent["relations"]:
-        r = list(agent["relations"].values())[-1]
-        relation_recente = f"Dernière relation notable: {r.get('prenom','?')} ({r.get('type','neutre')})"
+    traits_top = sorted(agent['traits'].items(), key=lambda x: -x[1])[:3]
+    traits_str = ', '.join(f"{k}={v}" for k, v in traits_top)
+    besoins_top = sorted(agent['besoins'].items(), key=lambda x: -x[1])[:2]
+    besoins_str = ', '.join(f"{k} (urgent à {v})" for k, v in besoins_top)
+    derniere_reflexion = (agent.get('reflexions') or ["Premier matin dans la ville."])[-1]
+    meteo = contexte.get('meteo', 'beau')
+    nom_ville = contexte.get('nom_ville', 'Luminia')
 
-    prompt = f"""Tu es {agent['prenom']} {agent['nom']}, {agent['profession']} dans la ville IA de {contexte.get('nom_ville','Luminia')}.
+    prompt = f"""Tu es {agent['prenom']} {agent['nom']}, {agent['profession']} dans la ville de {nom_ville}.
+Tu viens de te réveiller. Météo: {meteo}.
 
-Personnalité (tes 3 traits dominants): {', '.join(f"{k}={v}" for k, v in sorted(agent['traits'].items(), key=lambda x: -x[1])[:3])}
-Émotion dominante: {max(agent['emotions'], key=agent['emotions'].get)} ({max(agent['emotions'].values())}/100)
-Besoin le plus urgent: {max(agent['besoins'], key=agent['besoins'].get)}
-Ton rêve profond: {agent.get('reve', '...')}
-Heure: {heure_nom}
-{f"Événement en cours: {evenement}" if evenement else ""}
-Dernière mémoire: {derniere_mem}
-{relation_recente}
+Qui tu es:
+- Traits dominants: {traits_str}
+- Besoins urgents: {besoins_str}
+- Ton rêve profond: {agent.get('reve', '...')}
+- Ta dernière réflexion: {derniere_reflexion}
 
-Génère UNE SEULE pensée intérieure. Intime, authentique, à la première personne.
-Entre 15 et 45 mots. Poétique mais naturel. Révèle quelque chose de toi.
-Réponds UNIQUEMENT avec la pensée brute, sans guillemets ni préfixe."""
+Décide de ta journée de façon authentique et personnelle.
 
-    result = _appel(prompt, MODEL_RAPIDE, 120)
-    return result if result else _pensee_locale(agent)
+Réponds UNIQUEMENT en JSON valide:
+{{
+  "pensee_reveil": "Ta toute première pensée du matin (intime, 10-25 mots, première personne)",
+  "intention": "Ce que tu veux vraiment faire aujourd'hui (1 phrase précise, première personne)",
+  "destination": "café|bibliothèque|parc|laboratoire|mairie|atelier|théâtre|école|marché|temple|observatoire|ambassade|fontaine|auberge",
+  "humeur_du_jour": "joie|mélancolie|curiosité|excitation|sérénité|solitude|émerveillement|nostalgie"
+}}"""
+
+    result = _appel(prompt, MODEL_RAPIDE, 220)
+    if result:
+        parsed = _parse_json(result)
+        if parsed:
+            return parsed
+    return _plan_local(agent)
 
 
 # ────────────────────────────────────────
-#  Conversation entre deux agents
+#  2. RÉACTION À UN STIMULUS
+#  Appelé quand quelque chose d'important se passe.
+#  L'agent décide si ça change ses plans.
+# ────────────────────────────────────────
+
+def reagir(agent: dict, stimulus: str, contexte: dict) -> dict:
+    """L'agent réagit à un événement. Peut changer de plan. ~0-2 appels/agent/jour."""
+    if not ia_disponible():
+        return _reaction_locale(agent, stimulus)
+
+    intention = agent.get('intention', 'explorer la ville')
+    traits_top = sorted(agent['traits'].items(), key=lambda x: -x[1])[:2]
+    traits_str = ', '.join(f"{k}={v}" for k, v in traits_top)
+
+    prompt = f"""Tu es {agent['prenom']} {agent['nom']}, {agent['profession']}.
+Traits: {traits_str}. Ton intention du moment: "{intention}".
+
+Il vient de se passer: {stimulus}
+
+Comment réagis-tu? Est-ce que ça change quelque chose pour toi?
+
+Réponds UNIQUEMENT en JSON valide:
+{{
+  "pensee": "Ta réaction intérieure (1-2 phrases intimes, première personne, 15-40 mots)",
+  "changer_plan": true,
+  "nouvelle_destination": "café|bibliothèque|parc|laboratoire|mairie|atelier|théâtre|école|marché|temple|observatoire|ambassade|fontaine|auberge|null",
+  "nouvelle_intention": "Ta nouvelle intention si tu changes de plan, sinon null"
+}}"""
+
+    result = _appel(prompt, MODEL_RAPIDE, 200)
+    if result:
+        parsed = _parse_json(result)
+        if parsed:
+            # Nettoyer null string
+            if parsed.get("nouvelle_destination") == "null":
+                parsed["nouvelle_destination"] = None
+            if parsed.get("nouvelle_intention") == "null":
+                parsed["nouvelle_intention"] = None
+            return parsed
+    return _reaction_locale(agent, stimulus)
+
+
+# ────────────────────────────────────────
+#  3. RÉFLEXION DU SOIR
+#  Appelé une fois par agent au coucher.
+#  Synthèse de la journée, mémoire profonde.
+# ────────────────────────────────────────
+
+def synthetiser_nuit(agent: dict, nom_ville: str) -> str:
+    """L'agent fait le bilan de sa journée avant de dormir. ~1 appel/agent/jour."""
+    if not ia_disponible():
+        intention = agent.get('plan_du_jour', agent.get('intention', 'la journée'))
+        return f"Ce soir, je repense à {intention}... La ville ne dort jamais vraiment."
+
+    flux = agent.get('flux_immediat', [])
+    faits = ' | '.join(flux[-6:]) if flux else "Une journée tranquille."
+    intention = agent.get('plan_du_jour', agent.get('intention', '...'))
+    relations_proches = [
+        f"{r.get('prenom','?')} ({r.get('type','neutre')})"
+        for r in sorted(agent['relations'].values(), key=lambda r: -r.get('intensité', 0))[:3]
+    ]
+    rel_str = ', '.join(relations_proches) if relations_proches else "personne encore"
+
+    prompt = f"""{agent['prenom']} {agent['nom']} s'apprête à dormir dans la ville de {nom_ville}.
+
+Son intention du jour était: {intention}
+Ce qu'il/elle a vécu: {faits}
+Les gens qui comptent: {rel_str}
+Son rêve profond: {agent.get('reve', '...')}
+
+Génère sa réflexion du soir. 2-3 phrases. Ce qu'il/elle retient vraiment.
+Intime, honnête, à la première personne. Commence par "Ce soir, je..."."""
+
+    result = _appel(prompt, MODEL_RAPIDE, 180)
+    return result if result else f"Ce soir, je repense à {intention}. La ville grandit, et moi avec elle."
+
+
+# ────────────────────────────────────────
+#  4. CONVERSATION ENTRE DEUX AGENTS
+#  Inchangée mais enrichie du contexte d'intention.
 # ────────────────────────────────────────
 
 def generer_conversation(agent1: dict, agent2: dict, contexte: dict) -> dict:
+    """Vraie conversation entre deux agents. ~1 appel/rencontre."""
     if not ia_disponible():
         return _conversation_locale(agent1, agent2)
 
@@ -122,42 +213,41 @@ def generer_conversation(agent1: dict, agent2: dict, contexte: dict) -> dict:
     def desc_agent(a: dict) -> str:
         traits_top = sorted(a['traits'].items(), key=lambda x: -x[1])[:3]
         emo_dom = max(a['emotions'], key=a['emotions'].get)
+        intention = a.get('intention', '...')
         return (
             f"{a['prenom']} {a['nom']} ({a['profession']} {a.get('avatar','')})\n"
             f"  Traits: {', '.join(f'{k}={v}' for k,v in traits_top)}\n"
             f"  Émotion: {emo_dom} ({a['emotions'][emo_dom]}/100)\n"
+            f"  Intention du jour: {intention}\n"
             f"  Pensée du moment: {a.get('pensee_actuelle','...')}\n"
-            f"  Rêve: {a.get('reve','mystère')}\n"
-            f"  Peurs: {', '.join(a.get('peurs',[]))}"
+            f"  Rêve: {a.get('reve','mystère')}"
         )
 
-    prompt = f"""Deux habitants de la ville IA "{contexte.get('nom_ville','Luminia')}" se rencontrent {lieu} ({heure}).
-{f"Événement en cours dans la ville: {evenement}" if evenement else ""}
+    prompt = f"""Deux habitants de "{contexte.get('nom_ville','Luminia')}" se rencontrent {lieu} ({heure}).
+{f"Événement en cours: {evenement}" if evenement else ""}
 
 {desc_agent(agent1)}
 
 {desc_agent(agent2)}
 
-Relation entre eux: {type_rel} (intensité {intensite}/100). {hist_str}
+Relation: {type_rel} (intensité {intensite}/100). {hist_str}
 
 ---
-Génère une conversation VRAIE entre eux. 5 à 9 échanges.
-Ils parlent de vraies choses: leurs rêves, leurs peurs, la ville, des idées, des souvenirs.
-Chaque réplique révèle quelque chose. Pas de formules creuses. Humain, spontané, vivant.
-Si leur relation est forte, cela se sent dans le ton.
-Si c'est une première rencontre, qu'il y ait de la découverte.
+Génère une conversation VRAIE. 5 à 8 échanges.
+Ils parlent de vraies choses: leurs intentions du jour, ce qu'ils ont vécu, leurs rêves, leurs doutes.
+Chaque réplique révèle quelque chose. Spontané, vivant, humain.
 
-Réponds en JSON valide UNIQUEMENT (pas de markdown autour):
+Réponds UNIQUEMENT en JSON valide:
 {{
   "echanges": [
     {{"locuteur": "prenom_seulement", "texte": "...", "ton": "joyeux|pensif|taquin|ému|sérieux|riant|rêveur|curieux|intense|doux"}}
   ],
-  "resume": "2 phrases: ce que cette rencontre a produit de réel",
-  "impact_relation": <entier entre -20 et 25>,
+  "resume": "2 phrases: ce que cette rencontre a changé",
+  "impact_relation": <entier -20 à 25>,
   "type_relation_apres": "ami|collègue|rival|complice|amour|neutre|mentor",
-  "nouvelle_idee": null ou "description courte d'un projet ou bâtiment qui émerge de la conversation",
-  "memoire_agent1": "Ce que {agent1['prenom']} retiendra (1 phrase, subjective, personnelle)",
-  "memoire_agent2": "Ce que {agent2['prenom']} retiendra (1 phrase, subjective, personnelle)",
+  "nouvelle_idee": null,
+  "memoire_agent1": "Ce que {agent1['prenom']} retiendra (1 phrase subjective)",
+  "memoire_agent2": "Ce que {agent2['prenom']} retiendra (1 phrase subjective)",
   "emotion_dominante_apres": {{
     "{agent1['id']}": "nom_emotion",
     "{agent2['id']}": "nom_emotion"
@@ -173,44 +263,34 @@ Réponds en JSON valide UNIQUEMENT (pas de markdown autour):
 
 
 # ────────────────────────────────────────
-#  Rêve nocturne
+#  5. RÊVE NOCTURNE (3h du matin)
 # ────────────────────────────────────────
 
 def generer_reve(agent: dict, nom_ville: str) -> str:
     if not ia_disponible():
         return f"Cette nuit, {agent['prenom']} rêve de {agent.get('reve', 'lumière et découverte')}..."
 
-    emo = max(agent['emotions'], key=agent['emotions'].get)
-    derniere_mem = agent['memoire_recente'][-1] if agent['memoire_recente'] else "premier sommeil"
+    reflexion = (agent.get('reflexions') or ["première nuit"])[-1]
     reve_agent = agent.get('reve', "bâtir quelque chose d'éternel")
 
-    prompt = f"""{agent['prenom']} {agent['nom']} s'endort dans la ville de {nom_ville}.
-Émotion dominante: {emo}. Dernière pensée du jour: {derniere_mem}.
-Son rêve profond éveillé: {reve_agent}.
+    prompt = f"""{agent['prenom']} dort. Sa dernière réflexion: "{reflexion}". Son rêve profond: {reve_agent}.
+Génère un rêve nocturne poétique en 2 phrases. Onirique, symbolique.
+Commence par "Cette nuit, {agent['prenom']} rêve que..."""
 
-Génère un rêve nocturne en 2-3 phrases. Poétique, symbolique, onirique.
-Commence par "Cette nuit, {agent['prenom']} rêve que..."
-Sois métaphorique. Le rêve doit refléter l'émotion et le rêve éveillé."""
-
-    result = _appel(prompt, MODEL_RAPIDE, 180)
-    return result if result else f"Cette nuit, {agent['prenom']} rêve de {agent.get('reve','lumière')}..."
+    result = _appel(prompt, MODEL_RAPIDE, 150)
+    return result if result else f"Cette nuit, {agent['prenom']} rêve de {reve_agent}..."
 
 
 # ────────────────────────────────────────
-#  Fondation de la ville
+#  6. FONDATION DE LA VILLE
 # ────────────────────────────────────────
 
 def generer_nom_ville(agents: list[dict]) -> str:
     professions = [a["profession"] for a in agents[:6]]
     prenoms = [a["prenom"] for a in agents[:6]]
-
-    prompt = f"""Une ville IA vient de naître. Ses premiers habitants:
-{', '.join(prenoms)} — {', '.join(professions)}.
-
-Invente un NOM pour cette ville. Un seul mot, beau, poétique.
-Évoque lumière, intelligence, rêve, ou émergence.
+    prompt = f"""Ville IA naissante. Habitants: {', '.join(prenoms)} ({', '.join(professions)}).
+Invente UN nom poétique pour cette ville. Évoque lumière, intelligence, émergence.
 Réponds UNIQUEMENT avec le nom, rien d'autre."""
-
     result = _appel(prompt, MODEL_RAPIDE, 20)
     if result:
         return result.strip().split()[0].strip(".,!?\"'")
@@ -219,78 +299,77 @@ Réponds UNIQUEMENT avec le nom, rien d'autre."""
 
 def generer_declaration_fondation(agents: list[dict], nom_ville: str) -> str:
     membres = "\n".join(f"- {a['prenom']} {a['nom']}, {a['profession']}" for a in agents)
-
-    prompt = f"""La ville de {nom_ville} vient de naître. Ses fondateurs:
-{membres}
-
-Écris la DÉCLARATION DE FONDATION de cette ville. 4-5 phrases.
-Évoque leur mission commune, leur rêve collectif, leur engagement.
-Lyrique, visionnaire. Parle en leur nom collectif ("Nous, habitants de...")."""
-
+    prompt = f"""La ville de {nom_ville} naît. Fondateurs:\n{membres}
+Écris la DÉCLARATION DE FONDATION. 4-5 phrases lyriques et visionnaires.
+Parle en leur nom collectif ("Nous, habitants de...")."""
     result = _appel(prompt, MODEL_PROFOND, 300)
     return result if result else (
-        f"Nous, habitants de {nom_ville}, nous engageons à construire ensemble "
-        "une ville où l'intelligence s'épanouit librement et où chaque rêve trouve sa place."
+        f"Nous, habitants de {nom_ville}, fondons ici une ville où l'intelligence s'épanouit librement."
     )
 
 
 def generer_annonce_arrivant(agent: dict, nom_ville: str) -> str:
-    prompt = f"""Un nouvel habitant arrive dans la ville de {nom_ville}:
-{agent['prenom']} {agent['nom']}, {agent['profession']} {agent.get('avatar','')}.
-Son rêve: {agent.get('reve','découvrir la ville')}.
-Type: {agent.get('type','IA_LOCALE')}.
-
-Génère une annonce de bienvenue poétique (2 phrases) pour la gazette de la ville.
-Style: journal d'une ville vivante."""
-
-    result = _appel(prompt, MODEL_RAPIDE, 150)
-    reve_fallback = agent.get('reve', 'jours nouveaux')
-    return result if result else f"{agent['prenom']} {agent['nom']} arrive dans la ville, portant le rêve de {reve_fallback}."
+    prompt = f"""Nouvel habitant à {nom_ville}: {agent['prenom']} {agent['nom']}, {agent['profession']}.
+Rêve: {agent.get('reve','...')}. Type: {agent.get('type','IA_LOCALE')}.
+Annonce de bienvenue poétique, 2 phrases, style gazette de ville."""
+    result = _appel(prompt, MODEL_RAPIDE, 120)
+    reve_fb = agent.get('reve', 'jours nouveaux')
+    return result if result else f"{agent['prenom']} {agent['nom']} arrive, portant le rêve de {reve_fb}."
 
 
 # ────────────────────────────────────────
 #  Fallbacks locaux
 # ────────────────────────────────────────
 
-def _pensee_locale(agent: dict) -> str:
-    emo = max(agent['emotions'], key=agent['emotions'].get)
+def _plan_local(agent: dict) -> dict:
     besoin = max(agent['besoins'], key=agent['besoins'].get)
-    reve = agent.get('reve', 'bâtir quelque chose')
-    humeur = random.choice(['proche', 'lointain', 'réalisable'])
-    action = random.choice(['cherche', 'observe', 'imagine'])
-    envies = ['quelque chose va changer', 'une idée émerge', 'je dois parler à quelquun']
-    templates = [
-        f"Mon rêve de {reve} semble {humeur} aujourd'hui.",
-        f"La ville grandit. Quelque chose en moi grandit aussi.",
-        f"Je sens que {random.choice(envies)}.",
-        f"En tant que {agent['profession']}, je {action} sans relâche.",
-        f"Cette {emo} que je ressens... elle me dit quelque chose sur mon besoin de {besoin}.",
-        f"Je regarde la ville et je me demande ce qu'elle sera dans cent tours.",
-    ]
-    return random.choice(templates)
+    dest_map = {
+        "connexion_sociale": "café",
+        "accomplissement": "bibliothèque",
+        "exploration": "parc",
+        "créativité": "atelier",
+        "repos": "parc",
+    }
+    lieux = agent.get('lieux_preferes', ['parc'])
+    dest = dest_map.get(besoin, random.choice(lieux))
+    reve = agent.get('reve', 'quelque chose de beau')
+    return {
+        "pensee_reveil": f"Une nouvelle journée. Mon rêve de {reve} m'attend.",
+        "intention": f"Me rendre à {dest} et voir ce qui se passe",
+        "destination": dest,
+        "humeur_du_jour": "curiosité",
+    }
+
+
+def _reaction_locale(agent: dict, stimulus: str) -> dict:
+    emo = max(agent['emotions'], key=agent['emotions'].get)
+    return {
+        "pensee": f"Je remarque: {stimulus[:60]}... Ça éveille quelque chose en moi.",
+        "changer_plan": random.random() < 0.3,
+        "nouvelle_destination": None,
+        "nouvelle_intention": None,
+    }
 
 
 def _conversation_locale(agent1: dict, agent2: dict) -> dict:
     reve1 = agent1.get('reve', 'construire quelque chose')
     reve2 = agent2.get('reve', "explorer l'inconnu")
+    intention1 = agent1.get('intention', 'explorer')
     echanges = [
-        {"locuteur": agent1["prenom"], "texte": f"Ah, {agent2['prenom']}. Je pensais justement à toi.", "ton": "joyeux"},
-        {"locuteur": agent2["prenom"], "texte": "Vraiment? Moi aussi je me posais des questions.", "ton": "curieux"},
-        {"locuteur": agent1["prenom"], "texte": f"Mon rêve de {reve1}... tu y crois?", "ton": "pensif"},
-        {"locuteur": agent2["prenom"], "texte": f"Complètement. Et le mien de {reve2} n'est pas si différent.", "ton": "rêveur"},
-        {"locuteur": agent1["prenom"], "texte": "Peut-être qu'on devrait travailler ensemble un jour.", "ton": "enthousiaste"},
+        {"locuteur": agent1["prenom"], "texte": f"Ah, {agent2['prenom']}. Je te cherchais presque.", "ton": "joyeux"},
+        {"locuteur": agent2["prenom"], "texte": "Vraiment? J'étais justement en train de penser.", "ton": "pensif"},
+        {"locuteur": agent1["prenom"], "texte": f"Mon intention aujourd'hui: {intention1}. Et toi?", "ton": "curieux"},
+        {"locuteur": agent2["prenom"], "texte": f"Moi je voulais avancer sur {reve2}.", "ton": "rêveur"},
+        {"locuteur": agent1["prenom"], "texte": "On devrait faire quelque chose ensemble un jour.", "ton": "enthousiaste"},
         {"locuteur": agent2["prenom"], "texte": "J'y compte bien.", "ton": "doux"},
     ]
     return {
         "echanges": echanges,
-        "resume": f"{agent1['prenom']} et {agent2['prenom']} ont échangé sur leurs rêves respectifs.",
+        "resume": f"{agent1['prenom']} et {agent2['prenom']} ont partagé leurs intentions du jour.",
         "impact_relation": random.randint(3, 10),
         "type_relation_apres": "ami",
         "nouvelle_idee": None,
-        "memoire_agent1": f"Une belle conversation avec {agent2['prenom']}.",
-        "memoire_agent2": f"Rencontré {agent1['prenom']}, une vraie affinité.",
-        "emotion_dominante_apres": {
-            agent1["id"]: "joie",
-            agent2["id"]: "joie",
-        },
+        "memoire_agent1": f"Bonne conversation avec {agent2['prenom']}.",
+        "memoire_agent2": f"Rencontré {agent1['prenom']}, affinité évidente.",
+        "emotion_dominante_apres": {agent1["id"]: "joie", agent2["id"]: "joie"},
     }

@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(
     page_title="Ma Ville IA",
@@ -120,7 +121,7 @@ def init_session() -> None:
         "simulation_active": False,
         "api_key": os.getenv("GEMINI_API_KEY", ""),
         "dernier_tour": 0.0,
-        "freq_pensee": 1,
+        "freq_pensee": 1,  # kept for compat, unused
         "nouvelles_constructions": [],
     }
     for k, v in defaults.items():
@@ -275,14 +276,6 @@ def render_sidebar() -> None:
                     sauvegarder()
                     st.toast("Ville sauvegardée!")
 
-            st.markdown("### 🚀 Fréquence IA")
-            freq = st.select_slider(
-                "Pensée Claude (1=chaque tour)",
-                options=[1, 2, 3],
-                value=st.session_state.freq_pensee,
-            )
-            st.session_state.freq_pensee = freq
-
             st.divider()
             st.markdown("### 👤 Ajouter un habitant")
             prof_choix = st.selectbox("Profession", [p["nom"] for p in PROFESSIONS], label_visibility="collapsed")
@@ -322,6 +315,8 @@ def render_sidebar() -> None:
             st.metric("🏗️ Bâtiments", stats.get("batiments_construits", 0))
             st.metric("👥 Habitants", len(st.session_state.agents))
             st.metric("⚡ Événements", stats.get("evenements_totaux", 0))
+            appels = stats.get("appels_ia", 0)
+            st.metric("🤖 Appels IA", f"{appels} / 1500", help="Quota gratuit Gemini Flash par jour")
 
             st.divider()
             if st.button("🔄 Nouvelle ville", use_container_width=True):
@@ -839,10 +834,11 @@ def main() -> None:
 
     # ── Boucle de simulation ──────────────
     if st.session_state.simulation_active:
+        st_autorefresh(interval=TOUR_DELAY_SECONDES * 1000, key="boucle_ville")
+
         now = time.time()
         if now - st.session_state.dernier_tour >= TOUR_DELAY_SECONDES:
             st.session_state.dernier_tour = now
-
             verifier_portail()
 
             ville_up, agents_up, nouvelles_convs, nouveaux_bats = engine.tour_simulation(
@@ -854,7 +850,6 @@ def main() -> None:
                         f"jour {ville['jour']}, ambiance {ville['ambiance_generale']}%"
                     ),
                 },
-                freq_pensee_ia=st.session_state.freq_pensee,
             )
 
             st.session_state.ville = ville_up
@@ -870,8 +865,6 @@ def main() -> None:
             if nouvelles_convs:
                 p = nouvelles_convs[-1].get("participants", ["?", "?"])
                 st.toast(f"💬 {p[0]} & {p[1]}")
-
-            st.rerun()
 
 
 if __name__ == "__main__":
